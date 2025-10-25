@@ -69,7 +69,7 @@ class ConvNeXtTiny(nn.Module):
         dims = [96, 192, 384, 768]
         self.dropout_rate = dropout_rate
 
-        # Downsampling layers 
+        # Downsampling layers
         self.downsample_layers = nn.ModuleList()
         stem = nn.Sequential(
             nn.Conv2d(in_chans, dims[0], kernel_size=4, stride=4),
@@ -112,7 +112,7 @@ class ConvNeXtTiny(nn.Module):
         for i in range(4):
             x = self.downsample_layers[i](x)
             x = self.stages[i](x)
-        x = x.mean([-2, -1])
+        x = x.mean([-2, -1])  # global avg pool
         x = self.norm(x)
         return x
 
@@ -125,7 +125,7 @@ class ConvNeXtTiny(nn.Module):
 
 class ADNIConvNext(nn.Module):
     """
-    Custom ConvNeXt-Tiny for ADNI.
+    ConvNeXt-Tiny for ADNI.
     """
     def __init__(self, num_classes=2, dropout_rate=0.5):
         super().__init__()

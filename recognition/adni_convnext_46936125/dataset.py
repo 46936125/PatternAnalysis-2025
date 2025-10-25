@@ -41,7 +41,7 @@ class ADNIDataset(Dataset):
 
 def extract_subject_id(filename: str) -> str:
     """
-    Extracts the subject ID from a filename.
+    Extracts the subject ID from a filename like '218391_78.jpeg' -> '218391'.
     """
     base = os.path.basename(filename)
     return base.split('_')[0]
@@ -84,7 +84,7 @@ def get_dataloaders(data_root, batch_size=32, num_workers=0, val_split=0.15, see
                              [0.2198, 0.2198, 0.2198])
     ])
 
-    # categorise images
+    # Categorise images
     classes = {'NC': 0, 'AD': 1}
     all_paths, all_labels, all_subjects = [], [], []
 
@@ -102,7 +102,7 @@ def get_dataloaders(data_root, batch_size=32, num_workers=0, val_split=0.15, see
 
     print(f"Loaded {len(all_paths)} training images from {train_dir}")
 
-    # Subject K fold split for train and validation sets
+    # Split by subject K fold
     sgkf = StratifiedGroupKFold(n_splits=int(1 / val_split),
                                 shuffle=True, random_state=seed)
     train_idx, val_idx = next(sgkf.split(all_paths, all_labels, groups=all_subjects))

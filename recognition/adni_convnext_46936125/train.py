@@ -21,13 +21,13 @@ os.makedirs(save_dir, exist_ok=True)
 save_path = os.path.join(save_dir, f"convnext_adni_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pth")
 
 num_classes = 2
-batch_size = 128
+batch_size = 64
 num_workers = 0
 mixup_alpha = 0.2
 
 
 # Load data
-train_loader, val_loader, test_loader = get_dataloaders(data_root="/home/groups/comp3710/ADNI/AD_NC",
+train_loader, val_loader, test_loader = get_dataloaders(data_root="dataset/ADNI/AD_NC",
                                                         batch_size=batch_size,
                                                         num_workers=num_workers)
 print(f"Loaded {len(train_loader.dataset)} training images")
@@ -36,7 +36,7 @@ print(f"Loaded {len(test_loader.dataset)} test images\n")
 
 
 # Model setup
-model = ADNIConvNext(num_classes=num_classes, dropout_rate=0.4).to(device)
+model = ADNIConvNext(num_classes=num_classes, dropout_rate=0.5).to(device)
 w_nc = 1.0
 w_ad = 1.5   # slightly higher to penalize AD mistakes more
 criterion = nn.CrossEntropyLoss(label_smoothing=0.1, weight=torch.tensor([w_nc, w_ad]).to(device))
@@ -121,16 +121,15 @@ def plot_metrics(train_losses, val_losses, val_accs, label=""):
     plt.savefig(os.path.join(save_dir, f"training_curve_{label}.png"))
     plt.close()
 
-
+# Instantiate training params
 best_val_acc = 0
 train_losses, val_losses, val_accs = [], [], []
 patience, no_improve_epochs = 15, 0
-num_epochs = 90
+num_epochs = 100
 
 optimizer = optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
 
-# Training loop
 for epoch in range(1, num_epochs + 1):
     train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device, use_mixup=False)
     val_loss, val_acc, val_recall, val_spec, val_auc = evaluate(model, val_loader, criterion, device)
@@ -146,12 +145,12 @@ for epoch in range(1, num_epochs + 1):
         best_val_acc = val_acc
         no_improve_epochs = 0
         torch.save(model.state_dict(), save_path)
-        print(f"Best model updated (Val Acc: {val_acc:.4f})")
+        print(f"💾 Best model updated (Val Acc: {val_acc:.4f})")
     else:
         no_improve_epochs += 1
 
     if no_improve_epochs >= patience:
-        print(f"Early stopping at epoch {epoch} (no improvement for {patience} epochs).")
+        print(f"⏹️ Early stopping at epoch {epoch} (no improvement for {patience} epochs).")
         break
 
 plot_metrics(train_losses, val_losses, val_accs)
