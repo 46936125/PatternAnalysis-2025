@@ -17,7 +17,7 @@ checkpoint_path = "checkpoints/convnext_adni_20251008_085822.pth"
 # Number of classes
 num_classes = 2
 
-# Image transforms
+# Image transforms (should match validation/test transforms from train.py)
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -83,7 +83,7 @@ if __name__ == "__main__":
     test_folder = "dataset/ADNI/AD_NC/test"
 
     acc, recall, specificity, auc = evaluate_folder(test_folder)
-    print("Test Folder Evaluation:")
+    print("✅ Test Folder Evaluation:")
     print(f"Accuracy: {acc:.4f}")
     print(f"Sensitivity (Recall): {recall:.4f}")
     print(f"Specificity: {specificity:.4f}")

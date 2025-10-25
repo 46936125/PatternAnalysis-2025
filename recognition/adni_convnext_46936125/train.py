@@ -23,24 +23,26 @@ save_path = os.path.join(save_dir, f"convnext_adni_{datetime.now().strftime('%Y%
 num_classes = 2
 batch_size = 128
 num_workers = 0
-mixup_alpha = 0.0
+mixup_alpha = 0.2
 
 
 # Load data
-train_loader, val_loader, test_loader = get_dataloaders(data_root="dataset/ADNI/AD_NC",
+train_loader, val_loader, test_loader = get_dataloaders(data_root="/home/groups/comp3710/ADNI/AD_NC",
                                                         batch_size=batch_size,
                                                         num_workers=num_workers)
-print(f"✅ Loaded {len(train_loader.dataset)} training images")
-print(f"✅ Loaded {len(val_loader.dataset)} validation images")
-print(f"✅ Loaded {len(test_loader.dataset)} test images\n")
+print(f"Loaded {len(train_loader.dataset)} training images")
+print(f"Loaded {len(val_loader.dataset)} validation images")
+print(f"Loaded {len(test_loader.dataset)} test images\n")
 
 
 # Model setup
-model = ADNIConvNext(num_classes=num_classes).to(device)
-criterion = nn.CrossEntropyLoss(label_smoothing=0.05)  # 🔧 smoother decision boundary
+model = ADNIConvNext(num_classes=num_classes, dropout_rate=0.4).to(device)
+w_nc = 1.0
+w_ad = 1.5   # slightly higher to penalize AD mistakes more
+criterion = nn.CrossEntropyLoss(label_smoothing=0.1, weight=torch.tensor([w_nc, w_ad]).to(device))
 
 
-# training helper
+# Training helper
 def train_one_epoch(model, dataloader, criterion, optimizer, device, use_mixup=True):
     model.train()
     total_loss, correct, total = 0.0, 0, 0
@@ -50,7 +52,7 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, use_mixup=T
         imgs, labels = imgs.to(device), labels.to(device)
         optimizer.zero_grad()
 
-        # Mixup for regularisation
+        # Mixup augmentation
         if use_mixup:
             imgs, targets_a, targets_b, lam = mixup_data(imgs, labels, alpha=mixup_alpha)
             outputs = model(imgs)
@@ -119,16 +121,13 @@ def plot_metrics(train_losses, val_losses, val_accs, label=""):
     plt.savefig(os.path.join(save_dir, f"training_curve_{label}.png"))
     plt.close()
 
-# Set dropout
-model.update_dropout_rate(0.0)
 
-# Instantiate training parameters
 best_val_acc = 0
 train_losses, val_losses, val_accs = [], [], []
 patience, no_improve_epochs = 15, 0
-num_epochs = 100
+num_epochs = 90
 
-optimizer = optim.AdamW(model.parameters(), lr=4e-3, weight_decay=1e-4)
+optimizer = optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
 
 # Training loop

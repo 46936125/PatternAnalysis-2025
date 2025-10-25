@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# Basic building blocks
+
 class LayerNorm2d(nn.Module):
     """LayerNorm for channels-first data (N, C, H, W)."""
     def __init__(self, num_channels, eps=1e-6):
@@ -36,7 +36,7 @@ class DropPath(nn.Module):
 
 class ConvNeXtBlock(nn.Module):
     """ConvNeXt block: depthwise conv + MLP + residual."""
-    def __init__(self, dim, drop_path=0.0, layer_scale_init_value=1e-6):
+    def __init__(self, dim, drop_path=0.4, layer_scale_init_value=1e-6):
         super().__init__()
         self.dwconv = nn.Conv2d(dim, dim, kernel_size=7, padding=3, groups=dim)
         self.norm = LayerNorm2d(dim)
@@ -67,8 +67,9 @@ class ConvNeXtTiny(nn.Module):
 
         depths = [3, 3, 9, 3]
         dims = [96, 192, 384, 768]
+        self.dropout_rate = dropout_rate
 
-        # Downsampling layers
+        # Downsampling layers 
         self.downsample_layers = nn.ModuleList()
         stem = nn.Sequential(
             nn.Conv2d(in_chans, dims[0], kernel_size=4, stride=4),
@@ -85,7 +86,7 @@ class ConvNeXtTiny(nn.Module):
 
         # Stages of ConvNeXt blocks
         self.stages = nn.ModuleList()
-        dp_rates = [x.item() for x in torch.linspace(0, 0.1, sum(depths))]
+        dp_rates = [x.item() for x in torch.linspace(0, self.dropout_rate, sum(depths))]
         cur = 0
         for i in range(4):
             stage = nn.Sequential(*[
@@ -97,6 +98,7 @@ class ConvNeXtTiny(nn.Module):
 
         # Final layers
         self.norm = nn.LayerNorm(dims[-1], eps=1e-6)
+        self.dropout = nn.Dropout(dropout_rate)
         self.head = nn.Linear(dims[-1], num_classes)
 
         self.apply(self._init_weights)
@@ -116,15 +118,16 @@ class ConvNeXtTiny(nn.Module):
 
     def forward(self, x):
         x = self.forward_features(x)
+        x = self.dropout(x)
         x = self.head(x)
         return x
 
 
 class ADNIConvNext(nn.Module):
     """
-    ConvNext-Tiny built for use with the ADNI dataset.
+    Custom ConvNeXt-Tiny for ADNI.
     """
-    def __init__(self, num_classes=2, dropout_rate=0.2):
+    def __init__(self, num_classes=2, dropout_rate=0.5):
         super().__init__()
         self.backbone = ConvNeXtTiny(num_classes=num_classes, dropout_rate=dropout_rate)
 
@@ -133,6 +136,7 @@ class ADNIConvNext(nn.Module):
 
     def forward(self, x):
         return self.backbone(x)
-    
+
     def update_dropout_rate(self, dropout_rate):
         self.backbone.dropout = nn.Dropout(dropout_rate)
+        self.backbone.dropout_rate = dropout_rate
