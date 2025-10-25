@@ -78,14 +78,14 @@ def get_dataloaders(data_root, batch_size=32, num_workers=0, val_split=0.15, see
         transforms.RandomHorizontalFlip(p=0.3),
         transforms.RandomRotation(10),
         transforms.ToTensor(),
-        transforms.Normalize([0.1156], [0.2198])
+        transforms.Normalize([0.1156, 0.1156, 0.1156], [0.2198, 0.2198, 0.2198])
     ])
 
     # Validation/Test transforms (no augmentation)
     val_test_transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
-        transforms.Normalize([0.1156], [0.2198])
+        transforms.Normalize([0.1156, 0.1156, 0.1156], [0.2198, 0.2198, 0.2198])
     ])
 
     # Load datasets
@@ -101,7 +101,7 @@ def get_dataloaders(data_root, batch_size=32, num_workers=0, val_split=0.15, see
         [train_size, val_size],
         generator=torch.Generator().manual_seed(seed)
     )
-    val_dataset.dataset.transform = val_test_transform  # override transform for val
+    val_dataset.dataset.transform = val_test_transform
 
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,

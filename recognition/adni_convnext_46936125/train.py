@@ -21,9 +21,9 @@ os.makedirs(save_dir, exist_ok=True)
 save_path = os.path.join(save_dir, f"convnext_adni_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pth")
 
 num_classes = 2
-batch_size = 64
+batch_size = 128
 num_workers = 0
-mixup_alpha = 0.1
+mixup_alpha = 0.0
 
 
 # Load data
@@ -36,8 +36,8 @@ print(f"✅ Loaded {len(test_loader.dataset)} test images\n")
 
 
 # Model setup
-model = ADNIConvNext(num_classes=num_classes, freeze_backbone=True).to(device)
-criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+model = ADNIConvNext(num_classes=num_classes).to(device)
+criterion = nn.CrossEntropyLoss(label_smoothing=0.05)  # 🔧 smoother decision boundary
 
 
 # training helper
@@ -120,7 +120,7 @@ def plot_metrics(train_losses, val_losses, val_accs, label=""):
     plt.close()
 
 # Set dropout
-model.update_dropout_rate(0.2)
+model.update_dropout_rate(0.0)
 
 # Instantiate training parameters
 best_val_acc = 0
@@ -128,14 +128,14 @@ train_losses, val_losses, val_accs = [], [], []
 patience, no_improve_epochs = 15, 0
 num_epochs = 100
 
-optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+optimizer = optim.AdamW(model.parameters(), lr=4e-3, weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
 
 # Training loop
 for epoch in range(1, num_epochs + 1):
-    train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device, use_mixup=True)
+    train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device, use_mixup=False)
     val_loss, val_acc, val_recall, val_spec, val_auc = evaluate(model, val_loader, criterion, device)
-    scheduler.step(val_acc)
+    scheduler.step()
 
     train_losses.append(train_loss)
     val_losses.append(val_loss)
@@ -156,4 +156,3 @@ for epoch in range(1, num_epochs + 1):
         break
 
 plot_metrics(train_losses, val_losses, val_accs)
-

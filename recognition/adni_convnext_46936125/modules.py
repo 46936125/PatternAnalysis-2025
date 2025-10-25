@@ -97,7 +97,6 @@ class ConvNeXtTiny(nn.Module):
 
         # Final layers
         self.norm = nn.LayerNorm(dims[-1], eps=1e-6)
-        self.dropout = nn.Dropout(dropout_rate)
         self.head = nn.Linear(dims[-1], num_classes)
 
         self.apply(self._init_weights)
@@ -105,8 +104,7 @@ class ConvNeXtTiny(nn.Module):
     def _init_weights(self, m):
         if isinstance(m, (nn.Conv2d, nn.Linear)):
             nn.init.trunc_normal_(m.weight, std=0.02)
-            if m.bias is not None:
-                nn.init.zeros_(m.bias)
+            nn.init.constant_(m.bias, 0)
 
     def forward_features(self, x):
         for i in range(4):
@@ -118,7 +116,6 @@ class ConvNeXtTiny(nn.Module):
 
     def forward(self, x):
         x = self.forward_features(x)
-        x = self.dropout(x)
         x = self.head(x)
         return x
 
@@ -127,7 +124,7 @@ class ADNIConvNext(nn.Module):
     """
     ConvNext-Tiny built for use with the ADNI dataset.
     """
-    def __init__(self, num_classes=2, dropout_rate=0.2, freeze_backbone=False):
+    def __init__(self, num_classes=2, dropout_rate=0.2):
         super().__init__()
         self.backbone = ConvNeXtTiny(num_classes=num_classes, dropout_rate=dropout_rate)
 
