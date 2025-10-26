@@ -112,7 +112,7 @@ class ConvNeXtTiny(nn.Module):
         for i in range(4):
             x = self.downsample_layers[i](x)
             x = self.stages[i](x)
-        x = x.mean([-2, -1])  # global avg pool
+        x = x.mean([-2, -1])
         x = self.norm(x)
         return x
 
@@ -125,7 +125,7 @@ class ConvNeXtTiny(nn.Module):
 
 class ADNIConvNext(nn.Module):
     """
-    ConvNeXt-Tiny for ADNI.
+    Custom ConvNeXt-Tiny for ADNI.
     """
     def __init__(self, num_classes=2, dropout_rate=0.5):
         super().__init__()
