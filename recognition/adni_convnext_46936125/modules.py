@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import copy
 
 
 class LayerNorm2d(nn.Module):
@@ -141,24 +140,3 @@ class ADNIConvNext(nn.Module):
     def update_dropout_rate(self, dropout_rate):
         self.backbone.dropout = nn.Dropout(dropout_rate)
         self.backbone.dropout_rate = dropout_rate
-
-
-class ModelEMA:
-    """Exponential Moving Average for model weights."""
-    def __init__(self, model, decay=0.999):
-        # Make a copy of the model for EMA
-        self.ema_model = copy.deepcopy(model).eval()
-        self.decay = decay
-        for p in self.ema_model.parameters():
-            p.requires_grad_(False)
-
-    def update(self, model):
-        with torch.no_grad():
-            ema_params = dict(self.ema_model.named_parameters())
-            for n, p in model.named_parameters():
-                if n in ema_params:
-                    ema_params[n].mul_(self.decay).add_(p.data, alpha=1 - self.decay)
-
-    def apply_shadow(self, model):
-        """Load EMA weights into the main model temporarily."""
-        model.load_state_dict(self.ema_model.state_dict())
