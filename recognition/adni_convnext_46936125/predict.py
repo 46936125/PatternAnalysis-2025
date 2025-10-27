@@ -31,7 +31,7 @@ model.load_state_dict(torch.load(checkpoint_path, map_location=device))
 model.to(device)
 model.eval()
 
-# Prediction functions
+# Prediction helper
 def predict_image(image_path):
     """Predict AD vs NC for a single image."""
     image = Image.open(image_path).convert("RGB")
@@ -85,7 +85,7 @@ if __name__ == "__main__":
     acc, recall, specificity, auc = evaluate_folder(test_folder)
     print("Test Folder Evaluation:")
     print(f"Accuracy: {acc:.4f}")
-    print(f"Sensitivity: {recall:.4f}")
+    print(f"Sensitivity (Recall): {recall:.4f}")
     print(f"Specificity: {specificity:.4f}")
     print(f"AUC: {auc:.4f}")
 
