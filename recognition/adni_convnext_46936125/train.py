@@ -22,9 +22,9 @@ save_path = os.path.join(save_dir, f"convnext_adni_{datetime.now().strftime('%Y%
 config_path = os.path.join(save_dir, "train_config.json")  # Save checkpoint path and threshold
 
 num_classes = 2
-batch_size = 32
+batch_size = 64
 num_workers = 0
-mixup_alpha = 0.5
+mixup_alpha = 0.2
 
 # Load data
 train_loader, val_loader, test_loader = get_dataloaders(data_root="/home/groups/comp3710/ADNI/AD_NC",
@@ -42,20 +42,27 @@ criterion = nn.CrossEntropyLoss(label_smoothing=0.1, weight=torch.tensor([w_nc, 
 
 # Training helper
 def train_one_epoch(model, dataloader, criterion, optimizer, device, use_mixup=True):
+    """
+    Train the model for one epoch.
+    - Computes loss using MixUp if enabled.
+    - Computes subject-level accuracy using clean (non-mixed) images.
+    - Works correctly with shuffled dataloaders since subject_ids are returned.
+    """
     model.train()
-    total_loss, correct, total = 0.0, 0, 0
+    total_loss, total_samples = 0.0, 0
     subject_to_probs = {}
     subject_to_labels = {}
     subject_to_count = {}
     loop = tqdm(dataloader, leave=False)
 
-    for batch_idx, (imgs, labels) in enumerate(loop):
+    for imgs, labels, subject_ids in loop:
         imgs, labels = imgs.to(device), labels.to(device)
         optimizer.zero_grad()
 
+        # ===== Compute forward for MixUp training loss =====
         if use_mixup:
-            imgs, targets_a, targets_b, lam = mixup_data(imgs, labels, alpha=mixup_alpha)
-            outputs = model(imgs)
+            mixed_imgs, targets_a, targets_b, lam = mixup_data(imgs, labels, alpha=mixup_alpha)
+            outputs = model(mixed_imgs)
             loss = lam * criterion(outputs, targets_a) + (1 - lam) * criterion(outputs, targets_b)
         else:
             outputs = model(imgs)
@@ -63,30 +70,28 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, use_mixup=T
 
         loss.backward()
         optimizer.step()
-
         total_loss += loss.item() * imgs.size(0)
-        preds = outputs.argmax(1)
-        correct += (preds == labels).sum().item()
-        total += labels.size(0)
+        total_samples += imgs.size(0)
 
-        # Collect per-subject probabilities for accuracy
-        probs = torch.softmax(outputs, dim=1)[:, 1].detach().cpu().numpy()
-        start_idx = batch_idx * dataloader.batch_size
-        end_idx = min(start_idx + dataloader.batch_size, len(dataloader.dataset))
-        batch_indices = dataloader.dataset.indices[start_idx:end_idx] if hasattr(dataloader.dataset, 'indices') else range(start_idx, end_idx)
-        batch_subjects = [extract_subject_id(dataloader.dataset.image_paths[idx])
-                         for idx in batch_indices]
-        for i, subj_id in enumerate(batch_subjects):
+        # ===== Clean forward (no MixUp) for metrics =====
+        with torch.no_grad():
+            clean_outputs = model(imgs)
+            probs = torch.softmax(clean_outputs, dim=1)[:, 1].detach().cpu().numpy()
+            labels_cpu = labels.cpu().numpy()
+
+        # ===== Aggregate per-subject probabilities =====
+        for i, subj_id in enumerate(subject_ids):
+            subj_id = str(subj_id)
             if subj_id not in subject_to_probs:
                 subject_to_probs[subj_id] = []
-                subject_to_labels[subj_id] = labels[i].cpu().item()
+                subject_to_labels[subj_id] = labels_cpu[i]
                 subject_to_count[subj_id] = 0
             subject_to_probs[subj_id].append(probs[i])
             subject_to_count[subj_id] += 1
 
         loop.set_description(f"Train Loss: {loss.item():.4f}")
 
-    # Compute per-subject accuracy
+    # ===== Compute subject-level accuracy =====
     all_probs, all_labels, all_preds = [], [], []
     for subj_id in subject_to_probs:
         avg_prob = np.mean(subject_to_probs[subj_id])
@@ -97,75 +102,43 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, use_mixup=T
 
     subject_acc = accuracy_score(all_labels, all_preds)
 
-    return total_loss / total, subject_acc
+    return total_loss / total_samples, subject_acc
 
-def find_optimal_threshold(model, dataloader, device):
-    model.eval()
-    subject_to_probs = {}
-    subject_to_labels = {}
-    subject_to_count = {}
-
-    with torch.no_grad():
-        for batch_idx, (imgs, labels) in enumerate(dataloader):
-            imgs, labels = imgs.to(device), labels.to(device)
-            outputs = model(imgs)
-            probs = torch.softmax(outputs, dim=1)[:, 1].detach().cpu().numpy()
-            start_idx = batch_idx * dataloader.batch_size
-            end_idx = min(start_idx + dataloader.batch_size, len(dataloader.dataset))
-            batch_indices = dataloader.dataset.indices[start_idx:end_idx] if hasattr(dataloader.dataset, 'indices') else range(start_idx, end_idx)
-            batch_subjects = [extract_subject_id(dataloader.dataset.image_paths[idx])
-                             for idx in batch_indices]
-            for i, subj_id in enumerate(batch_subjects):
-                if subj_id not in subject_to_probs:
-                    subject_to_probs[subj_id] = []
-                    subject_to_labels[subj_id] = labels[i].cpu().item()
-                    subject_to_count[subj_id] = 0
-                subject_to_probs[subj_id].append(probs[i])
-                subject_to_count[subj_id] += 1
-
-    all_probs, all_labels = [], []
-    for subj_id in subject_to_probs:
-        avg_prob = np.mean(subject_to_probs[subj_id])
-        all_probs.append(avg_prob)
-        all_labels.append(subject_to_labels[subj_id])
-
-    thresholds = np.arange(0.1, 0.9, 0.05)
-    best_acc, best_threshold = 0, 0.5
-    for thresh in thresholds:
-        preds = (np.array(all_probs) > thresh).astype(int)
-        acc = accuracy_score(all_labels, preds)
-        if acc > best_acc:
-            best_acc = acc
-            best_threshold = thresh
-    return best_threshold
 
 def evaluate(model, dataloader, criterion, device, threshold=0.5):
+    """
+    Evaluate model at the subject level.
+    - Collects per-subject probabilities.
+    - Computes subject-level metrics: loss, accuracy, recall, specificity, AUC.
+    - Works correctly even if dataloader is shuffled (uses subject_ids).
+    """
     model.eval()
-    total_loss = 0.0
+    total_loss, total_samples = 0.0, 0
     subject_to_probs = {}
     subject_to_labels = {}
     subject_to_count = {}
 
     with torch.no_grad():
-        for batch_idx, (imgs, labels) in enumerate(dataloader):
+        for imgs, labels, subject_ids in dataloader:
             imgs, labels = imgs.to(device), labels.to(device)
             outputs = model(imgs)
             loss = criterion(outputs, labels)
             total_loss += loss.item() * imgs.size(0)
+            total_samples += imgs.size(0)
+
             probs = torch.softmax(outputs, dim=1)[:, 1].detach().cpu().numpy()
-            start_idx = batch_idx * dataloader.batch_size
-            end_idx = min(start_idx + dataloader.batch_size, len(dataloader.dataset))
-            batch_indices = dataloader.dataset.indices[start_idx:end_idx] if hasattr(dataloader.dataset, 'indices') else range(start_idx, end_idx)
-            batch_subjects = [extract_subject_id(dataloader.dataset.image_paths[idx])
-                             for idx in batch_indices]
-            for i, subj_id in enumerate(batch_subjects):
+            labels_cpu = labels.cpu().numpy()
+
+            for i, subj_id in enumerate(subject_ids):
+                subj_id = str(subj_id)
                 if subj_id not in subject_to_probs:
                     subject_to_probs[subj_id] = []
-                    subject_to_labels[subj_id] = labels[i].cpu().item()
+                    subject_to_labels[subj_id] = labels_cpu[i]
                     subject_to_count[subj_id] = 0
                 subject_to_probs[subj_id].append(probs[i])
                 subject_to_count[subj_id] += 1
 
+    # ===== Compute per-subject metrics =====
     all_labels, all_preds, all_probs = [], [], []
     for subj_id in subject_to_probs:
         avg_prob = np.mean(subject_to_probs[subj_id])
@@ -174,7 +147,7 @@ def evaluate(model, dataloader, criterion, device, threshold=0.5):
         all_preds.append(pred)
         all_probs.append(avg_prob)
 
-    avg_loss = total_loss / sum(subject_to_count.values())
+    avg_loss = total_loss / total_samples
     acc = accuracy_score(all_labels, all_preds)
     recall = recall_score(all_labels, all_preds)
     tn, fp, fn, tp = confusion_matrix(all_labels, all_preds).ravel()
@@ -183,17 +156,17 @@ def evaluate(model, dataloader, criterion, device, threshold=0.5):
 
     return avg_loss, acc, recall, specificity, auc
 
-def plot_metrics(train_losses, val_losses, val_accs, label=""):
+def plot_metrics(train_losses, val_losses, val_accs):
     plt.figure(figsize=(8, 5))
-    plt.plot(train_losses, label=f"Train Loss {label}")
-    plt.plot(val_losses, label=f"Val Loss {label}")
-    plt.plot(val_accs, label=f"Val Accuracy {label}")
+    plt.plot(train_losses, label=f"Train Loss")
+    plt.plot(val_losses, label=f"Val Loss")
+    plt.plot(val_accs, label=f"Val Accuracy")
     plt.legend()
-    plt.title(f"Training Progress {label}")
+    plt.title(f"Training Progress")
     plt.xlabel("Epoch")
     plt.ylabel("Loss / Accuracy")
     plt.grid(True)
-    plt.savefig(os.path.join(save_dir, f"training_curve_{label}.png"))
+    plt.savefig(os.path.join(save_dir, f"training_curve.png"))
     plt.close()
 
 # Instantiate training params
@@ -203,10 +176,9 @@ patience, no_improve_epochs = 20, 0
 num_epochs = 150
 
 optimizer = optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
-scheduler = torch.optim.lr_scheduler.CyclicLR(optimizer, base_lr=1e-5, max_lr=3e-4, step_size_up=5, mode='triangular2')
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-6)
 
-# Find initial optimal threshold
-optimal_threshold = find_optimal_threshold(model, val_loader, device)
+optimal_threshold = 0.5
 print(f"Initial optimal threshold: {optimal_threshold:.4f}")
 
 for epoch in range(1, num_epochs + 1):
@@ -224,7 +196,7 @@ for epoch in range(1, num_epochs + 1):
         best_val_acc = val_acc
         no_improve_epochs = 0
         torch.save(model.state_dict(), save_path)
-        optimal_threshold = find_optimal_threshold(model, val_loader, device)
+        optimal_threshold = 0.5
         print(f"Best model updated (Val Acc: {val_acc:.4f})")
         print(f"Updated optimal threshold: {optimal_threshold:.4f}")
         with open(config_path, 'w') as f:

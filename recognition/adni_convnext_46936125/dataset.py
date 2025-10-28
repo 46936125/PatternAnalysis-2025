@@ -33,8 +33,10 @@ class ADNIDataset(Dataset):
         if self.transform:
             image = self.transform(image)
 
-        return image, label
-
+        # return subject id so callers do not have to reconstruct indices
+        subject_id = extract_subject_id(img_path)
+        return image, label, subject_id
+    
 
 def extract_subject_id(filename: str) -> str:
     """
@@ -61,18 +63,18 @@ def get_dataloaders(data_root, batch_size=32, num_workers=0, val_split=0.15, see
         transforms.RandomRotation(20),
         transforms.RandomAffine(degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1)),
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406],
-                             [0.229, 0.224, 0.225])
+        transforms.Normalize([0.1156, 0.1156, 0.1156],
+                             [0.2198, 0.2198, 0.2198])
     ])
 
     val_test_transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406],
-                             [0.229, 0.224, 0.225])
+        transforms.Normalize([0.1156, 0.1156, 0.1156],
+                             [0.2198, 0.2198, 0.2198])
     ])
 
-    # Collect all labels and subjects
+    # Collate data
     classes = {'NC': 0, 'AD': 1}
     all_paths, all_labels, all_subjects = [], [], []
 
@@ -90,7 +92,7 @@ def get_dataloaders(data_root, batch_size=32, num_workers=0, val_split=0.15, see
 
     print(f"Loaded {len(all_paths)} training images from {train_dir}")
 
-    # Subject K fold
+    # Split by subject with K fold
     sgkf = StratifiedGroupKFold(n_splits=int(1 / val_split),
                                 shuffle=True, random_state=seed)
     train_idx, val_idx = next(sgkf.split(all_paths, all_labels, groups=all_subjects))
