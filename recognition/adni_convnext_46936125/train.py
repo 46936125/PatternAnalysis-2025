@@ -27,7 +27,7 @@ num_workers = 0
 mixup_alpha = 0.2
 
 # Load data
-train_loader, val_loader, test_loader = get_dataloaders(data_root="/home/groups/comp3710/ADNI/AD_NC",
+train_loader, val_loader, test_loader = get_dataloaders(data_root="home/groups/comp3710/ADNI/AD_NC",
                                                         batch_size=batch_size,
                                                         num_workers=num_workers)
 print(f"Loaded {len(train_loader.dataset)} training images")
@@ -104,6 +104,48 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, use_mixup=T
 
     return total_loss / total_samples, subject_acc
 
+def find_optimal_threshold(model, dataloader, device):
+    """
+    Evaluate the model on the validation set and determine the optimal threshold
+    that maximizes subject-level accuracy.
+    """
+    model.eval()
+    subject_to_probs = {}
+    subject_to_labels = {}
+
+    with torch.no_grad():
+        for imgs, labels, subject_ids in dataloader:
+            imgs, labels = imgs.to(device), labels.to(device)
+            outputs = model(imgs)
+            probs = torch.softmax(outputs, dim=1)[:, 1].detach().cpu().numpy()
+            labels_cpu = labels.cpu().numpy()
+
+            # Collect per-subject probabilities
+            for i, subj_id in enumerate(subject_ids):
+                subj_id = str(subj_id)
+                if subj_id not in subject_to_probs:
+                    subject_to_probs[subj_id] = []
+                    subject_to_labels[subj_id] = labels_cpu[i]
+                subject_to_probs[subj_id].append(probs[i])
+
+    # Aggregate to subject-level
+    all_probs, all_labels = [], []
+    for subj_id in subject_to_probs:
+        avg_prob = np.mean(subject_to_probs[subj_id])
+        all_probs.append(avg_prob)
+        all_labels.append(subject_to_labels[subj_id])
+
+    # Search for threshold that maximizes accuracy
+    thresholds = np.linspace(0.1, 0.9, 81)
+    best_acc, best_th = 0, 0.5
+    for th in thresholds:
+        preds = (np.array(all_probs) > th).astype(int)
+        acc = accuracy_score(all_labels, preds)
+        if acc > best_acc:
+            best_acc, best_th = acc, th
+
+    print(f"Optimal threshold found: {best_th:.4f} (Val Subject Accuracy = {best_acc:.4f})")
+    return best_th
 
 def evaluate(model, dataloader, criterion, device, threshold=0.5):
     """
@@ -156,20 +198,20 @@ def evaluate(model, dataloader, criterion, device, threshold=0.5):
 
     return avg_loss, acc, recall, specificity, auc
 
-def plot_metrics(train_losses, val_losses, val_accs):
+def plot_metrics(train_losses, val_losses, val_accs, label=""):
     plt.figure(figsize=(8, 5))
-    plt.plot(train_losses, label=f"Train Loss")
-    plt.plot(val_losses, label=f"Val Loss")
-    plt.plot(val_accs, label=f"Val Accuracy")
+    plt.plot(train_losses, label=f"Train Loss {label}")
+    plt.plot(val_losses, label=f"Val Loss {label}")
+    plt.plot(val_accs, label=f"Val Accuracy {label}")
     plt.legend()
-    plt.title(f"Training Progress")
+    plt.title(f"Training Progress {label}")
     plt.xlabel("Epoch")
     plt.ylabel("Loss / Accuracy")
     plt.grid(True)
-    plt.savefig(os.path.join(save_dir, f"training_curve.png"))
+    plt.savefig(os.path.join(save_dir, f"training_curve_{label}.png"))
     plt.close()
 
-# Instantiate training params
+# Training params
 best_val_acc = 0
 train_losses, val_losses, val_accs = [], [], []
 patience, no_improve_epochs = 20, 0
@@ -178,7 +220,8 @@ num_epochs = 150
 optimizer = optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-6)
 
-optimal_threshold = 0.5
+# Find initial optimal threshold
+optimal_threshold = find_optimal_threshold(model, val_loader, device)
 print(f"Initial optimal threshold: {optimal_threshold:.4f}")
 
 for epoch in range(1, num_epochs + 1):
@@ -196,7 +239,7 @@ for epoch in range(1, num_epochs + 1):
         best_val_acc = val_acc
         no_improve_epochs = 0
         torch.save(model.state_dict(), save_path)
-        optimal_threshold = 0.5
+        optimal_threshold = find_optimal_threshold(model, val_loader, device)
         print(f"Best model updated (Val Acc: {val_acc:.4f})")
         print(f"Updated optimal threshold: {optimal_threshold:.4f}")
         with open(config_path, 'w') as f:
@@ -208,4 +251,4 @@ for epoch in range(1, num_epochs + 1):
         print(f"Early stopping at epoch {epoch} (no improvement for {patience} epochs).")
         break
 
-plot_metrics(train_losses, val_losses, val_accs)
+plot_metrics(train_losses, val_losses, val_accs, label="stage2")

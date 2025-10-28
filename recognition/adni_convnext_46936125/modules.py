@@ -125,8 +125,7 @@ class ConvNeXtTiny(nn.Module):
 
 class ADNIConvNext(nn.Module):
     """
-    Custom ConvNeXt-Tiny for ADNI (from scratch, no pretrained weights).
-    Includes backbone freezing/unfreezing for staged training.
+    Custom ConvNeXt-Tiny for ADNI.
     """
     def __init__(self, num_classes=2, dropout_rate=0.5):
         super().__init__()

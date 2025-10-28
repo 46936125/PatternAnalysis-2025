@@ -62,6 +62,9 @@ def get_dataloaders(data_root, batch_size=32, num_workers=0, val_split=0.15, see
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.RandomRotation(20),
         transforms.RandomAffine(degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1)),
+        transforms.ColorJitter(brightness=0.1, contrast=0.1),
+        transforms.RandomAdjustSharpness(1.5),
+        transforms.GaussianBlur(3),
         transforms.ToTensor(),
         transforms.Normalize([0.1156, 0.1156, 0.1156],
                              [0.2198, 0.2198, 0.2198])
@@ -74,7 +77,7 @@ def get_dataloaders(data_root, batch_size=32, num_workers=0, val_split=0.15, see
                              [0.2198, 0.2198, 0.2198])
     ])
 
-    # Collate data
+    # Collate all images
     classes = {'NC': 0, 'AD': 1}
     all_paths, all_labels, all_subjects = [], [], []
 
@@ -92,7 +95,7 @@ def get_dataloaders(data_root, batch_size=32, num_workers=0, val_split=0.15, see
 
     print(f"Loaded {len(all_paths)} training images from {train_dir}")
 
-    # Split by subject with K fold
+    # Split subjects with K fold
     sgkf = StratifiedGroupKFold(n_splits=int(1 / val_split),
                                 shuffle=True, random_state=seed)
     train_idx, val_idx = next(sgkf.split(all_paths, all_labels, groups=all_subjects))
