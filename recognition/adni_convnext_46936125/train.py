@@ -22,7 +22,7 @@ save_path = os.path.join(save_dir, f"convnext_adni_{datetime.now().strftime('%Y%
 config_path = os.path.join(save_dir, "train_config.json")  # Save checkpoint path and threshold
 
 num_classes = 2
-batch_size = 128
+batch_size = 64
 num_workers = 0
 mixup_alpha = 0.2
 
