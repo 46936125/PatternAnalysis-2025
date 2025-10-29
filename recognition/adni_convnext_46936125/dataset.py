@@ -62,9 +62,6 @@ def get_dataloaders(data_root, batch_size=32, num_workers=0, val_split=0.15, see
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.RandomRotation(20),
         transforms.RandomAffine(degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1)),
-        transforms.ColorJitter(brightness=0.1, contrast=0.1),
-        transforms.RandomAdjustSharpness(1.5),
-        transforms.GaussianBlur(3),
         transforms.ToTensor(),
         transforms.Normalize([0.1156, 0.1156, 0.1156],
                              [0.2198, 0.2198, 0.2198])

@@ -136,7 +136,3 @@ class ADNIConvNext(nn.Module):
 
     def forward(self, x):
         return self.backbone(x)
-
-    def update_dropout_rate(self, dropout_rate):
-        self.backbone.dropout = nn.Dropout(dropout_rate)
-        self.backbone.dropout_rate = dropout_rate
