@@ -59,6 +59,7 @@ pip install torch==2.7.1+cu126 torchvision==0.22.1+cu126 numpy==2.1.2 matplotlib
 
 Expected file structure
 
+```
 /home/groups/comp3710/ADNI/AD_NC/
 ├── train/
 │   ├── AD/
@@ -66,6 +67,7 @@ Expected file structure
 ├── test/
 │   ├── AD/
 │   └── NC/
+```
 
 - Images must be in .jpg, .jpeg, or .png format.
 - Labels: AD = 1, NC = 0.
@@ -120,18 +122,15 @@ The evaluation includes:
 Detailed are the models performance on the provided test dataset, it is noted that the 0.8 accuracy level was not achieved (sadness).
 
 Test Folder Evaluation (Subject-Level):
-Overall accuracy: 0.7844
-Correct AD classification accuracy: 0.7354
-Correct NC classification accuracy: 0.8326
-AUC: 0.8616
+- Overall accuracy: 0.7844
+- Correct AD classification accuracy: 0.7354
+- Correct NC classification accuracy: 0.8326
+- AUC: 0.8616
 
 Single Image Prediction: /home/groups/comp3710/ADNI/AD_NC/test/AD/388206_78.jpeg
+
 Predicted Class: AD with confidence 0.9684
 
-Outputs ROC curve, Confusion matrix and training curve to 'checkpoints'
-
-![Training Curve](checkpoints/training_curve.png)
-![Confusion Matrix](checkpoints/confusion_matrix.png)
-![ROC Curve](checkpoints/roc_curve.png)
+Outputs ROC curve, Confusion matrix and training curve to 'checkpoints'.
 
 
