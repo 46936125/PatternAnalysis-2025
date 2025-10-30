@@ -30,11 +30,13 @@ class ADNIDataset(Dataset):
         label = self.labels[idx]
 
         image = Image.open(img_path).convert('RGB')
+
         if self.transform:
             image = self.transform(image)
 
         # return subject id so callers do not have to reconstruct indices
         subject_id = extract_subject_id(img_path)
+
         return image, label, subject_id
     
 
@@ -48,7 +50,7 @@ def extract_subject_id(filename: str) -> str:
 def get_dataloaders(data_root, batch_size=32, num_workers=0, val_split=0.15, seed=42):
     """
     Creates train, validation, and test dataloaders for ADNI MRI data.
-    Splits the training data by *subject ID* to prevent data leakage.
+    Splits the training data by subject ID to prevent data leakage.
     """
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -56,16 +58,16 @@ def get_dataloaders(data_root, batch_size=32, num_workers=0, val_split=0.15, see
     train_dir = os.path.join(data_root, 'train')
     test_dir = os.path.join(data_root, 'test')
 
-    # Transforms
+    # Transform augmentations
     train_transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.RandomHorizontalFlip(p=0.5),
-        transforms.RandomRotation(30),
-        transforms.RandomAffine(degrees=0, translate=(0.15, 0.15), scale=(0.85, 1.15)),
+        transforms.RandomRotation(20),
+        transforms.RandomAffine(degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1)),
         transforms.ToTensor(),
         transforms.Normalize([0.1156, 0.1156, 0.1156],
                              [0.2198, 0.2198, 0.2198])
-    ])
+    ]) # Normalised based on this ADNI train datasets mean and standard deviation
 
     val_test_transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -74,14 +76,16 @@ def get_dataloaders(data_root, batch_size=32, num_workers=0, val_split=0.15, see
                              [0.2198, 0.2198, 0.2198])
     ])
 
-    # Collate all images
+    # Group data into paths, labels and subjects
     classes = {'NC': 0, 'AD': 1}
     all_paths, all_labels, all_subjects = [], [], []
 
     for label_name, label_idx in classes.items():
         class_dir = os.path.join(train_dir, label_name)
+
         if not os.path.isdir(class_dir):
             continue
+
         for fname in os.listdir(class_dir):
             if fname.lower().endswith(('.jpg', '.jpeg', '.png')):
                 path = os.path.join(class_dir, fname)
@@ -92,7 +96,9 @@ def get_dataloaders(data_root, batch_size=32, num_workers=0, val_split=0.15, see
 
     print(f"Loaded {len(all_paths)} training images from {train_dir}")
 
-    # Split subjects with K fold
+    # =======================================================
+    # split subjects using K fold
+    # =======================================================
     sgkf = StratifiedGroupKFold(n_splits=int(1 / val_split),
                                 shuffle=True, random_state=seed)
     train_idx, val_idx = next(sgkf.split(all_paths, all_labels, groups=all_subjects))
@@ -103,6 +109,10 @@ def get_dataloaders(data_root, batch_size=32, num_workers=0, val_split=0.15, see
     train_paths, train_labels = subset(train_idx)
     val_paths, val_labels = subset(val_idx)
 
+    # =======================================================
+    # Verify no leakage (I was going crazy because of what
+    # the validation accuracy was showing)
+    # =======================================================
     train_subjects = set([extract_subject_id(p) for p in train_paths])
     val_subjects = set([extract_subject_id(p) for p in val_paths])
     overlap = train_subjects.intersection(val_subjects)
@@ -113,22 +123,32 @@ def get_dataloaders(data_root, batch_size=32, num_workers=0, val_split=0.15, see
     print(f"Train images:   {len(train_paths)}")
     print(f"Val images:     {len(val_paths)}")
 
+    # =======================================================
+    # Construct datasets
+    # =======================================================
     train_dataset = ADNIDataset(train_paths, train_labels, transform=train_transform)
     val_dataset = ADNIDataset(val_paths, val_labels, transform=val_test_transform)
 
     test_paths, test_labels = [], []
+
     for label_name, label_idx in classes.items():
         class_dir = os.path.join(test_dir, label_name)
+
         if not os.path.isdir(class_dir):
             continue
+
         for fname in os.listdir(class_dir):
             if fname.lower().endswith(('.jpg', '.jpeg', '.png')):
                 test_paths.append(os.path.join(class_dir, fname))
                 test_labels.append(label_idx)
+
     test_dataset = ADNIDataset(test_paths, test_labels, transform=val_test_transform)
 
     print(f"Test images:    {len(test_dataset)}")
 
+    # =======================================================
+    # Load datasets
+    # =======================================================
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                               num_workers=num_workers, pin_memory=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
@@ -148,9 +168,11 @@ def mixup_data(x, y, alpha=0.2):
     """Applies Mixup data augmentation."""
     if alpha <= 0:
         return x, y, y, 1.0
+
     lam = np.random.beta(alpha, alpha)
     batch_size = x.size(0)
     index = torch.randperm(batch_size).to(x.device)
     mixed_x = lam * x + (1 - lam) * x[index, :]
     y_a, y_b = y, y[index]
+
     return mixed_x, y_a, y_b, lam

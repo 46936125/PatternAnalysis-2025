@@ -2,6 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+# ================================================================
+# https://github.com/facebookresearch/ConvNeXt
+# following the base design of the ConvNeXt architecture from this repository
+# ================================================================
 
 class LayerNorm2d(nn.Module):
     """LayerNorm for channels-first data (N, C, H, W)."""
@@ -35,7 +39,26 @@ class DropPath(nn.Module):
 
 
 class ConvNeXtBlock(nn.Module):
-    """ConvNeXt block: depthwise conv + MLP + residual."""
+    """
+    ConvNeXt Block: Depthwise convolution + MLP + residual connection.
+    The ConvNeXt model is constructed of sets of these blocks at different layers,
+
+    The block performs:
+        1. Depthwise convolution for spatial feature extraction.
+        2. Layer normalization in the channel dimension.
+        3. Pointwise (1x1) linear layers forming a two-layer MLP with GELU activation.
+        4. Layer scaling and stochastic depth regularization.
+        5. Residual addition to preserve information flow.
+
+    Args:
+        dim (int): 
+            Number of input and output feature channels.
+        drop_path (float, optional): 
+            Drop path (stochastic depth) rate. Default is 0.4.
+        layer_scale_init_value (float, optional): 
+            Initial value for the layer scale parameter `gamma`. 
+            Default is 1e-6.
+    """
     def __init__(self, dim, drop_path=0.4, layer_scale_init_value=1e-6):
         super().__init__()
         self.dwconv = nn.Conv2d(dim, dim, kernel_size=7, padding=3, groups=dim)
@@ -61,7 +84,25 @@ class ConvNeXtBlock(nn.Module):
 
 
 class ConvNeXtTiny(nn.Module):
-    """ConvNeXt-Tiny built fully from scratch."""
+    """
+    ConvNeXt-Tiny model adapted for customizable input channels and classification tasks.
+
+    This class implements the ConvNeXt architecture (based on the paper 
+    "A ConvNet for the 2020s" by Liu et al., 2022), suitable for image
+    classification. It follows a hierarchical design with progressive 
+    downsampling and ConvNeXt blocks at each stage.
+
+    Args:
+        num_classes (int): 
+            Number of output classes for the classification head. 
+        in_chans (int): 
+            Number of input channels. 
+            Default is 3 (RGB images).
+        dropout_rate (float): 
+            Dropout rate applied to the final feature representation before 
+            the classification head. 
+            Default is 0.4.
+    """
     def __init__(self, num_classes=2, in_chans=3, dropout_rate=0.4):
         super().__init__()
 
@@ -121,18 +162,3 @@ class ConvNeXtTiny(nn.Module):
         x = self.dropout(x)
         x = self.head(x)
         return x
-
-
-class ADNIConvNext(nn.Module):
-    """
-    Custom ConvNeXt-Tiny for ADNI.
-    """
-    def __init__(self, num_classes=2, dropout_rate=0.5):
-        super().__init__()
-        self.backbone = ConvNeXtTiny(num_classes=num_classes, dropout_rate=dropout_rate)
-
-        for param in self.backbone.parameters():
-            param.requires_grad = True
-
-    def forward(self, x):
-        return self.backbone(x)
