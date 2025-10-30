@@ -1,6 +1,6 @@
 # ADNI MRI Classification with ConvNeXt
 
-This project implements a **ConvNeXt-Tiny model** to classify Alzheimer's Disease (AD) versus Normal Control (NC) from MRI slice images in the **ADNI dataset**. It provides a complete training and prediction pipeline in PyTorch, including data augmentation, evaluation metrics, and model checkpointing.
+This project implements a **ConvNeXt-Tiny model** to classify Alzheimer's Disease (AD) versus Normal Control (NC) from MRI slice images in the **ADNI dataset**. It provides a complete training and prediction pipeline in PyTorch, including data augmentation, evaluation metrics, and model checkpointing. Following the base design of the ConvNeXt architecture from this repository: https://github.com/facebookresearch/ConvNeXt.
 
 ---
 
